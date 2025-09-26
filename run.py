@@ -19,12 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Set the reactor before importing scrapy
 import scrapy.utils.reactor
-scrapy.utils.reactor.install_reactor('twisted.internet.selectreactor.SelectReactor')
-
-# Monkey patch to fix _handleSignals issue
-import twisted.internet.reactor
-if not hasattr(twisted.internet.reactor, '_handleSignals'):
-    twisted.internet.reactor._handleSignals = lambda: None
+scrapy.utils.reactor.install_reactor('twisted.internet.asyncioreactor.AsyncioSelectorReactor')
 
 # Now import and run scrapy
 from scrapy.crawler import CrawlerProcess
@@ -35,13 +30,12 @@ def main():
     # Load environment variables
     load_dotenv()
     
-    # Set up logging
+    # Set up minimal logging (only to file, not console)
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
         handlers=[
             logging.FileHandler("dealnews_scraper.log"),
-            logging.StreamHandler()
         ]
     )
     logger = logging.getLogger(__name__)
@@ -52,7 +46,13 @@ def main():
     # Configure proxy usage based on environment variable
     use_proxy = os.getenv('DISABLE_PROXY', '').lower() not in ('1', 'true', 'yes')
     if use_proxy:
-        logger.info("Using proxy for scraping")
+        proxy_user = os.getenv('PROXY_USER')
+        proxy_pass = os.getenv('PROXY_PASS')
+        if proxy_user and proxy_pass:
+            logger.info(f"Using proxy for scraping with user: {proxy_user}")
+        else:
+            logger.warning("Proxy enabled but credentials not found, disabling proxy")
+            os.environ['DISABLE_PROXY'] = 'true'
     else:
         logger.info("Proxy disabled for local testing")
         os.environ['DISABLE_PROXY'] = 'true'
@@ -116,14 +116,25 @@ def main():
         },
     })
     
+    # Suppress Scrapy console output
+    settings.set('LOG_LEVEL', 'ERROR')
+    settings.set('LOG_ENABLED', False)
+    
     # Create and run crawler
     process = CrawlerProcess(settings)
     process.crawl(DealnewsSpider)
     
-    logger.info("Starting DealNews scraper")
+    print("🚀 DealNews Scraper Starting...")
+    print("📊 Extracting deals from DealNews.com...")
+    print("💾 Saving data to MySQL database...")
+    print("📁 Exporting data to JSON file...")
+    
     process.start()
     
-    logger.info("Scraper run completed!")
+    print("✅ DealNews Scraper Completed Successfully!")
+    print("📈 Data extracted and saved to database")
+    print("📄 Check exports/deals.json for scraped data")
+    print("🗄️  Access database via Adminer at http://localhost:8080")
 
 if __name__ == "__main__":
     main()

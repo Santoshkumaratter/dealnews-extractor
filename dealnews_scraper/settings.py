@@ -5,7 +5,7 @@ BOT_NAME = 'dealnews_scraper'
 SPIDER_MODULES = ['dealnews_scraper.spiders']
 NEWSPIDER_MODULE = 'dealnews_scraper.spiders'
 
-ROBOTSTXT_OBEY = True
+ROBOTSTXT_OBEY = False
 # Increase delay to reduce rate limiting and play nice with the target site
 DOWNLOAD_DELAY = 3
 AUTOTHROTTLE_ENABLED = True
@@ -44,3 +44,18 @@ ITEM_PIPELINES = {
 }
 
 FEED_EXPORT_ENCODING = 'utf-8'
+
+# Export settings for JSON and CSV
+FEEDS = {
+    'exports/deals.json': {
+        'format': 'json',
+        'encoding': 'utf8',
+        'store_empty': False,
+        'indent': 2,
+    },
+    'exports/deals.csv': {
+        'format': 'csv',
+        'encoding': 'utf8',
+        'store_empty': False,
+    }
+}

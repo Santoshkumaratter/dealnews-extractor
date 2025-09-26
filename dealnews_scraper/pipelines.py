@@ -9,6 +9,14 @@ class MySQLPipeline:
     """
     def open_spider(self, spider):
         try:
+            # Check if MySQL is disabled
+            disable_mysql = os.getenv('DISABLE_MYSQL', 'false').lower() in ('1', 'true', 'yes')
+            if disable_mysql:
+                logging.info("MySQL pipeline disabled by DISABLE_MYSQL flag")
+                self.mysql_enabled = False
+                return
+            
+            self.mysql_enabled = True
             self.save_html_snapshots = os.getenv('SAVE_HTML_SNAPSHOTS', 'false').lower() in ('1', 'true', 'yes')
             self.snapshots_dir = os.getenv('SNAPSHOTS_DIR', 'exports/html_snapshots')
             if self.save_html_snapshots and not os.path.isdir(self.snapshots_dir):
@@ -18,7 +26,7 @@ class MySQLPipeline:
             mysql_host = os.getenv('MYSQL_HOST', 'localhost')
             mysql_port = int(os.getenv('MYSQL_PORT', '3307'))  # Use port 3307 as default
             mysql_user = os.getenv('MYSQL_USER', 'root')  # Use root user by default
-            mysql_password = os.getenv('MYSQL_PASSWORD', '')  # Empty password by default
+            mysql_password = os.getenv('MYSQL_PASSWORD', 'root')  # Use root password by default
             mysql_database = os.getenv('MYSQL_DATABASE', 'dealnews')
             
             # Log the connection details for debugging
@@ -58,7 +66,7 @@ class MySQLPipeline:
             
             self.cursor = self.conn.cursor()
             
-            # Create main deals table with all new fields
+            # Create main deals table with all fields from PDF requirements
             self.cursor.execute("""
                 CREATE TABLE IF NOT EXISTS deals (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -80,7 +88,14 @@ class MySQLPipeline:
                     staffpick VARCHAR(50),
                     detail TEXT,
                     raw_html TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    
+                    INDEX idx_dealid (dealid),
+                    INDEX idx_category (category),
+                    INDEX idx_store (store),
+                    INDEX idx_created_at (created_at),
+                    INDEX idx_price (price(20))
                 )
             """)
             
@@ -127,6 +142,10 @@ class MySQLPipeline:
 
     def process_item(self, item, spider):
         try:
+            # Skip processing if MySQL is disabled
+            if not getattr(self, 'mysql_enabled', True):
+                return item
+                
             if isinstance(item, DealnewsItem):
                 # Validate minimal fields to avoid inserting broken rows
                 if not item.get('url'):

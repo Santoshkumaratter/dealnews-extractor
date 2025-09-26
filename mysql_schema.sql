@@ -5,7 +5,7 @@ CREATE DATABASE IF NOT EXISTS dealnews CHARACTER SET utf8mb4 COLLATE utf8mb4_uni
 
 USE dealnews;
 
--- Main deals table with all new fields
+-- Main deals table with all required fields
 CREATE TABLE IF NOT EXISTS deals (
     id INT AUTO_INCREMENT PRIMARY KEY,
     dealid VARCHAR(100),
@@ -69,16 +69,3 @@ CREATE TABLE IF NOT EXISTS related_deals (
 GRANT ALL PRIVILEGES ON dealnews.* TO 'dealnews_user'@'%';
 GRANT ALL PRIVILEGES ON dealnews.* TO 'dealnews_user'@'localhost';
 FLUSH PRIVILEGES;
-
--- Sample queries for testing
--- Get all deals from today
--- SELECT * FROM deals WHERE DATE(created_at) = CURDATE();
-
--- Get deals by category
--- SELECT title, price, promo FROM deals WHERE category = 'electronics';
-
--- Get deals with promo codes
--- SELECT title, price, promo FROM deals WHERE promo IS NOT NULL AND promo != '';
-
--- Count deals by category
--- SELECT category, COUNT(*) as deal_count FROM deals GROUP BY category ORDER BY deal_count DESC;

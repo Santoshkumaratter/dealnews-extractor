@@ -42,7 +42,12 @@ class ProxyMiddleware:
 
         # Check if proxy should be disabled (for local testing)
         if os.getenv('DISABLE_PROXY', '').lower() in ('1', 'true', 'yes'):
-            spider.logger.info("Proxy disabled for local testing")
+            spider.logger.debug("Proxy disabled for local testing")
+            return None
+            
+        # Skip robots.txt requests to avoid proxy auth issues
+        if 'robots.txt' in request.url:
+            spider.logger.debug(f"Skipping robots.txt request: {request.url}")
             return None
             
         # Proxy selection
@@ -80,13 +85,10 @@ class ProxyMiddleware:
             proxy = f"http://{proxy_host}:{proxy_port}"
 
         if proxy_user and proxy_pass:
-            creds = f"{proxy_user}:{proxy_pass}"
-            encoded_creds = base64.b64encode(creds.encode("utf-8")).decode("utf-8")
-            proxy_auth_header = f"Basic {encoded_creds}"
+            # For Webshare proxy, use the credentials in the URL
+            proxy = f"http://{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}"
 
         prior_proxy = request.meta.get('proxy')
         if force_rotate or prior_proxy != proxy:
             request.meta['proxy'] = proxy
-            if proxy_auth_header:
-                request.headers['Proxy-Authorization'] = proxy_auth_header
-            spider.logger.debug(f"Using proxy {proxy}")
+            spider.logger.info(f"Using proxy {proxy}")

@@ -1,5 +1,6 @@
 import scrapy
 import re
+import time
 from dealnews_scraper.items import DealnewsItem, DealImageItem, DealCategoryItem, RelatedDealItem
 from urllib.parse import urljoin, urlparse, parse_qs
 from datetime import datetime
@@ -9,13 +10,13 @@ class DealnewsSpider(scrapy.Spider):
     allowed_domains = ["dealnews.com"]
     start_urls = [
         "https://www.dealnews.com/",
-        "https://www.dealnews.com/categories/",
         "https://www.dealnews.com/online-stores/"
     ]
 
     def parse(self, response):
         self.logger.info(f"Parsing page: {response.url}")
         
+        # Extract deals from current page
         deals = self.extract_deals(response)
         
         for deal in deals:
@@ -48,320 +49,325 @@ class DealnewsSpider(scrapy.Spider):
                     related_item['relatedurl'] = related_url
                     yield related_item
 
-        pagination_links = response.css('.pagination a::attr(href), .pager a::attr(href), .next::attr(href)').getall()
-        for link in pagination_links[:3]:
-            yield response.follow(link, self.parse)
+        # Handle pagination and infinite scroll
+        self.handle_pagination(response)
+
+    def handle_pagination(self, response):
+        """Handle pagination and infinite scroll for DealNews"""
+        # Look for "Load More" or "Show More" buttons
+        load_more_selectors = [
+            'button[class*="load"]',
+            'button[class*="more"]',
+            'a[class*="load"]',
+            'a[class*="more"]',
+            '.load-more',
+            '.show-more',
+            '.pagination .next',
+            '.pager .next'
+        ]
+        
+        for selector in load_more_selectors:
+            load_more_btn = response.css(selector)
+            if load_more_btn:
+                # Try to find the URL for loading more content
+                href = load_more_btn.css('::attr(href)').get()
+                if href:
+                    yield response.follow(href, self.parse)
+                    break
+                
+                # If it's a button, try to find data attributes
+                data_url = load_more_btn.css('::attr(data-url)').get()
+                if data_url:
+                    yield response.follow(data_url, self.parse)
+                    break
+        
+        # Also look for traditional pagination links
+        pagination_links = response.css('.pagination a::attr(href), .pager a::attr(href)').getall()
+        for link in pagination_links[:2]:  # Limit to 2 pages to avoid infinite loops
+            if link and 'page=' in link:
+                yield response.follow(link, self.parse)
 
     def extract_deals(self, response):
         deals = []
         
-        # Modern DealNews selectors - updated for current website structure
-        deal_selectors = [
-            # Primary selectors for deals
-            '.deal-card',
-            '.deal-tile',
-            '.card-deal', 
-            '.deal',
-            # Secondary selectors
-            '.offer-item',
-            'article[data-deal-id]',
-            'article[class*="deal"]',
-            # Fallback selectors
-            'article',
-            '[class*="deal"]',
-            '[class*="offer"]',
-            '[class*="coupon"]',
-            # Last resort
-            '.item',
-            '.product-card'
-        ]
+        # Use the correct DealNews selector based on actual HTML structure
+        deal_elements = response.css('.content-card')
         
-        # Try each selector until we find deals
-        for selector in deal_selectors:
-            deal_elements = response.css(selector)
-            if deal_elements:
-                self.logger.info(f"Found {len(deal_elements)} elements with selector: {selector}")
-                
-                # Process each element (limit to 50 per page for performance)
-                for element in deal_elements[:50]:
-                    deal = self.extract_deal_from_element(element, response)
-                    if deal:
-                        deals.append(deal)
-                
-                # If we found deals with this selector, stop trying others
-                if deals:
-                    break
-        
-        # If we still don't have deals, try a more aggressive approach
-        if not deals:
-            self.logger.info("No deals found with standard selectors, trying alternative approach")
-            # Look for any clickable elements with prices
-            price_elements = response.css('a:contains("$")') + response.css('[class*="price"]').css('a')
-            for element in price_elements[:50]:
+        if deal_elements:
+            self.logger.info(f"Found {len(deal_elements)} content cards")
+            
+            # Process each element
+            for element in deal_elements:
                 deal = self.extract_deal_from_element(element, response)
-                if deal:
+                if deal and self.is_valid_deal(deal):
                     deals.append(deal)
         
         self.logger.info(f"Total deals extracted: {len(deals)}")
         return deals
 
+    def is_valid_deal(self, deal):
+        """Validate if a deal has minimum required information"""
+        return (
+            deal.get('title') and len(deal['title'].strip()) > 5 and
+            (deal.get('url') or deal.get('deallink')) and
+            (deal.get('price') or deal.get('deal') or deal.get('store'))
+        )
+
     def extract_deal_from_element(self, element, response):
         deal = {}
         
-        # Extract deal ID and rec ID from URL
-        url_selectors = [
-            'a::attr(href)', '.deal-link::attr(href)', '.offer-link::attr(href)',
-            '[href]::attr(href)'
-        ]
+        # Extract deal ID from data attributes (based on HTML analysis)
+        deal['dealid'] = element.css('::attr(data-content-id)').get() or ''
         
-        for selector in url_selectors:
-            url = element.css(selector).get()
-            if url and not url.startswith('#') and len(url) > 10:
-                deal['url'] = urljoin(response.url, url)
-                # Extract dealid and recid from URL parameters
-                parsed_url = urlparse(deal['url'])
-                query_params = parse_qs(parsed_url.query)
-                deal['dealid'] = query_params.get('dealid', [''])[0]
-                deal['recid'] = query_params.get('recid', [''])[0]
-                break
+        # Extract URL from data attributes or links
+        url = element.css('::attr(data-offer-url)').get()
+        if not url:
+            # Fallback to link href
+            url = element.css('a::attr(href)').get()
         
-        # Extract title
-        title_selectors = [
-            'h1::text', 'h2::text', 'h3::text', 'h4::text',
-            '.title::text', '.deal-title::text', '.offer-title::text',
-            'a[title]::attr(title)', 'a::text',
-            '[class*="title"]::text'
-        ]
+        if url and not url.startswith('#') and len(url) > 10:
+            deal['url'] = urljoin(response.url, url)
+            # Extract recid from URL parameters if present
+            parsed_url = urlparse(deal['url'])
+            query_params = parse_qs(parsed_url.query)
+            deal['recid'] = query_params.get('recid', [''])[0]
+        else:
+            deal['url'] = ''
+            deal['recid'] = ''
         
-        for selector in title_selectors:
-            title = element.css(selector).get()
+        # Extract title using correct DealNews selector
+        title = element.css('.title::text').get()
+        if title and len(title.strip()) > 5:
+            deal['title'] = title.strip()
+        else:
+            # Fallback to title attribute
+            title = element.css('.title::attr(title)').get()
             if title and len(title.strip()) > 5:
                 deal['title'] = title.strip()
+            else:
+                deal['title'] = ''
+        
+        # Extract price - look for $ signs in text content
+        all_text = element.css('::text').getall()
+        for text in all_text:
+            text = text.strip()
+            if '$' in text and any(char.isdigit() for char in text) and len(text) < 20:
+                deal['price'] = text
+                break
+        else:
+            deal['price'] = ''
+        
+        # Extract promo/coupon code - look for percentage or discount text
+        all_text = element.css('::text').getall()
+        for text in all_text:
+            text = text.strip()
+            if ('%' in text or 'off' in text.lower() or 'save' in text.lower()) and len(text) < 50:
+                deal['promo'] = text
+                break
+        else:
+            deal['promo'] = ''
+        
+        # Extract store from published date text (e.g., "Amazon · 16 hrs ago")
+        all_text = element.css('::text').getall()
+        store = ''
+        for text in all_text:
+            text = text.strip()
+            if '·' in text and ('hrs ago' in text or 'days ago' in text or 'mins ago' in text):
+                # Extract store name before the "·" symbol
+                store = text.split('·')[0].strip()
                 break
         
-        # Extract price
-        price_selectors = [
-            '.price::text', '.deal-price::text', '.offer-price::text',
-            '[class*="price"]::text', '.amount::text',
-            '[class*="cost"]::text', '[class*="amount"]::text'
-        ]
+        # Fallback to data-store attribute if no store found in text
+        if not store:
+            store_id = element.css('::attr(data-store)').get()
+            if store_id:
+                # Map store ID to store name
+                store_mapping = {
+                    '313': 'Amazon',
+                    '1': 'Walmart', 
+                    '2': 'Target',
+                    '3': 'Best Buy',
+                    '4': 'eBay',
+                    '5': 'Home Depot',
+                    '6': 'Macy\'s',
+                    '7': 'Nike',
+                    '8': 'adidas',
+                    '9': 'REI',
+                    '10': 'Dick\'s Sporting Goods'
+                }
+                store = store_mapping.get(store_id, f'Store_{store_id}')
         
-        for selector in price_selectors:
-            price = element.css(selector).get()
-            if price and ('$' in price or 'free' in price.lower() or '%' in price):
-                deal['price'] = price.strip()
+        deal['store'] = store.strip() if store else ''
+        
+        # Extract deal description from snippet or use title as fallback
+        deal_text = element.css('.snippet::text').get()
+        if deal_text and len(deal_text.strip()) > 10:
+            deal['deal'] = deal_text.strip()
+        else:
+            # Fallback to title if no snippet available
+            deal['deal'] = deal.get('title', '')
+        
+        # Extract deal plus (additional info) - use callout text
+        dealplus = element.css('.callout::text').get()
+        deal['dealplus'] = dealplus.strip() if dealplus else ''
+        
+        # Extract deal link - use the main link
+        deallink = element.css('a::attr(href)').get()
+        if deallink and not deallink.startswith('#') and len(deallink) > 10:
+            deal['deallink'] = urljoin(response.url, deallink)
+        else:
+            deal['deallink'] = deal.get('url', '')
+        
+        # Extract deal text (button text) - use CTA button text
+        dealtext = element.css('.btn-cta::text').get()
+        deal['dealtext'] = dealtext.strip() if dealtext else ''
+        
+        # Extract deal hover text - use aria-label
+        dealhover = element.css('a::attr(aria-label)').get()
+        deal['dealhover'] = dealhover.strip() if dealhover else ''
+        
+        # Extract published date - look for time patterns in text
+        all_text = element.css('::text').getall()
+        for text in all_text:
+            text = text.strip()
+            if 'hrs ago' in text or 'days ago' in text or 'mins ago' in text:
+                deal['published'] = text
                 break
+        else:
+            deal['published'] = ''
         
-        # Extract promo codes
-        promo_selectors = [
-            '.promo::text', '.coupon::text', '.code::text',
-            '[class*="promo"]::text', '[class*="coupon"]::text',
-            '[class*="code"]::text'
-        ]
-        
-        for selector in promo_selectors:
-            promo = element.css(selector).get()
-            if promo and len(promo.strip()) > 2:
-                deal['promo'] = promo.strip()
+        # Extract popularity - look for "Popularity: X/5" pattern
+        for text in all_text:
+            text = text.strip()
+            if 'Popularity:' in text:
+                deal['popularity'] = text
                 break
+        else:
+            deal['popularity'] = ''
         
-        # Extract store information
-        store_selectors = [
-            '.store::text', '.vendor::text', '.retailer::text',
-            '[class*="store"]::text', '[class*="vendor"]::text',
-            '.brand::text', '[class*="brand"]::text'
-        ]
+        # Extract staff pick flag - check for staff pick badge
+        staffpick = element.css('.badges .icon[href="#ic-staff-pick"]').get()
+        deal['staffpick'] = 'Yes' if staffpick else 'No'
         
-        for selector in store_selectors:
-            store = element.css(selector).get()
-            if store and len(store.strip()) > 2:
-                deal['store'] = store.strip()
-                break
-        
-        # If no store found, try to extract from title or URL
-        if not deal.get('store'):
-            if 'amazon' in deal.get('title', '').lower():
-                deal['store'] = 'Amazon'
-            elif 'amazon' in deal.get('url', '').lower():
-                deal['store'] = 'Amazon'
-        
-        # Extract deal information (discounts, offers)
-        deal_selectors = [
-            '.deal::text', '.discount::text', '.savings::text',
-            '[class*="deal"]::text', '[class*="discount"]::text',
-            '[class*="offer"]::text', '[class*="savings"]::text'
-        ]
-        
-        for selector in deal_selectors:
-            deal_text = element.css(selector).get()
-            if deal_text and ('%' in deal_text or 'off' in deal_text.lower()):
-                deal['deal'] = deal_text.strip()
-                break
-        
-        # Extract deal plus (additional benefits like free shipping)
-        dealplus_selectors = [
-            '.dealplus::text', '.bonus::text', '.extra::text',
-            '[class*="shipping"]::text', '[class*="bonus"]::text'
-        ]
-        
-        for selector in dealplus_selectors:
-            dealplus = element.css(selector).get()
-            if dealplus and ('free' in dealplus.lower() or 'shipping' in dealplus.lower()):
-                deal['dealplus'] = dealplus.strip()
-                break
-        
-        # Extract deal link information
-        deal_link_element = element.css('a[href*="shop"], a[href*="buy"], a[href*="deal"]').get()
-        if deal_link_element:
-            deal_link_selector = element.css('a[href*="shop"], a[href*="buy"], a[href*="deal"]')
-            deal['deallink'] = deal_link_selector.css('::attr(href)').get()
-            deal['dealtext'] = deal_link_selector.css('::text').get()
-            deal['dealhover'] = deal_link_selector.css('::attr(title)').get()
-        
-        # Extract published timestamp
-        published_selectors = [
-            '.published::text', '.date::text', '.timestamp::text',
-            '[class*="published"]::text', '[class*="date"]::text',
-            '[class*="time"]::text'
-        ]
-        
-        for selector in published_selectors:
-            published = element.css(selector).get()
-            if published and ('hr' in published or 'day' in published or 'ago' in published):
-                deal['published'] = published.strip()
-                break
-        
-        # Extract popularity rating
-        popularity_selectors = [
-            '.popularity::text', '.rating::text', '.score::text',
-            '[class*="popularity"]::text', '[class*="rating"]::text'
-        ]
-        
-        for selector in popularity_selectors:
-            popularity = element.css(selector).get()
-            if popularity and ('/' in popularity or 'star' in popularity.lower()):
-                deal['popularity'] = popularity.strip()
-                break
-        
-        # Extract staff pick information
-        staffpick_selectors = [
-            '.staffpick::text', '.featured::text', '.recommended::text',
-            '[class*="staff"]::text', '[class*="pick"]::text'
-        ]
-        
-        for selector in staffpick_selectors:
-            staffpick = element.css(selector).get()
-            if staffpick and len(staffpick.strip()) > 2:
-                deal['staffpick'] = staffpick.strip()
-                break
-        
-        # Extract full detail/description
-        detail_selectors = [
-            '.detail::text', '.description::text', '.content::text',
-            '[class*="detail"]::text', '[class*="description"]::text'
-        ]
-        
-        for selector in detail_selectors:
-            detail = element.css(selector).get()
-            if detail and len(detail.strip()) > 20:
-                deal['detail'] = detail.strip()
-                break
+        # Extract detail/description - use snippet as detail
+        detail = element.css('.snippet::text').get()
+        deal['detail'] = detail.strip() if detail else ''
         
         # Extract images
-        deal['images'] = []
-        image_selectors = [
-            'img::attr(src)', 'img::attr(data-src)', '[class*="image"] img::attr(src)'
-        ]
+        img_url = element.css('img::attr(src)').get()
+        if img_url and not img_url.startswith('data:') and len(img_url) > 10:
+            deal['images'] = [urljoin(response.url, img_url)]
+        else:
+            deal['images'] = []
         
-        for selector in image_selectors:
-            images = element.css(selector).getall()
-            for img in images:
-                if img and not img.startswith('data:'):
-                    deal['images'].append(urljoin(response.url, img))
+        # Extract categories from chips
+        categories = []
+        chip_links = element.css('.chip::attr(href)').getall()
+        chip_titles = element.css('.chip::attr(title)').getall()
+        for i, link in enumerate(chip_links):
+            if link and i < len(chip_titles):
+                categories.append({
+                    'name': chip_titles[i].strip() if i < len(chip_titles) else '',
+                    'url': urljoin(response.url, link),
+                    'title': chip_titles[i].strip() if i < len(chip_titles) else ''
+                })
+        deal['categories'] = categories
         
-        # Extract categories
-        deal['categories'] = []
-        category_elements = element.css('[class*="category"], [class*="tag"], .breadcrumb a')
-        for cat_elem in category_elements:
-            category = {}
-            category['name'] = cat_elem.css('::text').get()
-            category['url'] = cat_elem.css('::attr(href)').get()
-            category['title'] = cat_elem.css('::attr(title)').get()
-            if category['name']:
-                deal['categories'].append(category)
-        
-        # Extract related deals
+        # Extract related deals - not available in current structure
         deal['related_deals'] = []
-        related_selectors = [
-            '.related a::attr(href)', '.similar a::attr(href)',
-            '[class*="related"] a::attr(href)'
-        ]
         
-        for selector in related_selectors:
-            related_urls = element.css(selector).getall()
-            for url in related_urls:
-                if url and not url.startswith('#'):
-                    deal['related_deals'].append(urljoin(response.url, url))
+        # Set defaults for missing fields
+        deal.setdefault('dealid', '')
+        deal.setdefault('recid', '')
+        deal.setdefault('url', '')
+        deal.setdefault('title', '')
+        deal.setdefault('price', '')
+        deal.setdefault('promo', '')
+        # Extract category from breadcrumb - get the last breadcrumb item (actual category)
+        breadcrumb_links = element.css('.breadcrumb a::text').getall()
+        category = ''
+        if breadcrumb_links:
+            # Get the last breadcrumb item which is usually the category
+            category = breadcrumb_links[-1].strip()
         
-        deal['category'] = self.extract_category_from_url(response.url)
+        # Fallback to data-category attribute if no category found in breadcrumb
+        if not category:
+            category_id = element.css('::attr(data-category)').get()
+            if category_id:
+                # Map category ID to category name
+                category_mapping = {
+                    '196': 'Home & Garden',
+                    '280': 'Clothing & Accessories',
+                    '202': 'Clothing & Accessories', 
+                    '1': 'Electronics',
+                    '2': 'Clothing',
+                    '3': 'Computers',
+                    '4': 'Health & Beauty',
+                    '5': 'Sports & Outdoors'
+                }
+                category = category_mapping.get(category_id, f'Category_{category_id}')
         
-        if deal.get('title') and len(deal['title']) > 10:
-            return deal
-        elif deal.get('price') and deal.get('url'):
-            return deal
+        deal.setdefault('category', category.strip() if category else 'general')
+        deal.setdefault('store', '')
+        deal.setdefault('deal', '')
+        deal.setdefault('dealplus', '')
+        deal.setdefault('deallink', '')
+        deal.setdefault('dealtext', '')
+        deal.setdefault('dealhover', '')
+        deal.setdefault('published', '')
+        deal.setdefault('popularity', '')
+        deal.setdefault('staffpick', '')
+        deal.setdefault('detail', '')
         
-        return None
-
-    def create_item(self, deal_data, html_content):
-        item = DealnewsItem()
-        
-        # Basic deal information
-        item['dealid'] = deal_data.get('dealid', '')
-        item['recid'] = deal_data.get('recid', '')
-        item['title'] = deal_data.get('title', '')
-        item['url'] = deal_data.get('url', '')
-        item['price'] = deal_data.get('price', '')
-        item['promo'] = deal_data.get('promo', '')
-        item['category'] = deal_data.get('category', 'general')
-        
-        # Store and vendor information
-        item['store'] = deal_data.get('store', '')
-        
-        # Deal details
-        item['deal'] = deal_data.get('deal', '')
-        item['dealplus'] = deal_data.get('dealplus', '')
-        
-        # Deal link information
-        item['deallink'] = deal_data.get('deallink', '')
-        item['dealtext'] = deal_data.get('dealtext', '')
-        item['dealhover'] = deal_data.get('dealhover', '')
-        
-        # Timestamps
-        item['published'] = deal_data.get('published', '')
-        item['created_at'] = datetime.now().isoformat()
-        
-        # Ratings and picks
-        item['popularity'] = deal_data.get('popularity', '')
-        item['staffpick'] = deal_data.get('staffpick', '')
-        
-        # Additional data
-        item['detail'] = deal_data.get('detail', '')
-        item['raw_html'] = html_content[:5000] if html_content else ''
-        
-        return item
+        return deal
 
     def extract_category_from_url(self, url):
+        """Extract category from URL - updated for current DealNews structure"""
         if '/online-stores/' in url:
             return 'stores'
-        elif '/c/electronics/' in url:
+        elif '/c/electronics/' in url or '/electronics/' in url:
             return 'electronics'
-        elif '/c/clothing/' in url:
+        elif '/c/clothing/' in url or '/clothing/' in url or '/fashion/' in url:
             return 'clothing'
-        elif '/c/home-garden/' in url:
+        elif '/c/home-garden/' in url or '/home/' in url or '/garden/' in url:
             return 'home'
-        elif '/c/computers/' in url:
+        elif '/c/computers/' in url or '/computers/' in url or '/tech/' in url:
             return 'computers'
+        elif '/c/health-beauty/' in url or '/health/' in url or '/beauty/' in url:
+            return 'health'
+        elif '/c/sports-outdoors/' in url or '/sports/' in url or '/outdoors/' in url:
+            return 'sports'
+        elif '/c/automotive/' in url or '/auto/' in url or '/car/' in url:
+            return 'automotive'
+        elif '/c/books-movies-music/' in url or '/books/' in url or '/movies/' in url:
+            return 'entertainment'
         elif '/categories/' in url:
             return 'categories'
         else:
             return 'general'
+
+    def create_item(self, deal, raw_html):
+        """Create a DealnewsItem from extracted deal data"""
+        item = DealnewsItem()
+        
+        # Map all fields from deal to item
+        item['dealid'] = deal.get('dealid', '')
+        item['recid'] = deal.get('recid', '')
+        item['url'] = deal.get('url', '')
+        item['title'] = deal.get('title', '')
+        item['price'] = deal.get('price', '')
+        item['promo'] = deal.get('promo', '')
+        item['category'] = deal.get('category', 'general')
+        item['store'] = deal.get('store', '')
+        item['deal'] = deal.get('deal', '')
+        item['dealplus'] = deal.get('dealplus', '')
+        item['deallink'] = deal.get('deallink', '')
+        item['dealtext'] = deal.get('dealtext', '')
+        item['dealhover'] = deal.get('dealhover', '')
+        item['published'] = deal.get('published', '')
+        item['popularity'] = deal.get('popularity', '')
+        item['staffpick'] = deal.get('staffpick', '')
+        item['detail'] = deal.get('detail', '')
+        item['raw_html'] = raw_html[:10000] if raw_html else ''  # Limit HTML size
+        
+        return item

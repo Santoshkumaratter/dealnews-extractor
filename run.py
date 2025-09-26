@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Set the reactor before importing scrapy
 import scrapy.utils.reactor
+# Use the most compatible reactor for Docker environments
 scrapy.utils.reactor.install_reactor('twisted.internet.asyncioreactor.AsyncioSelectorReactor')
 
 # Now import and run scrapy

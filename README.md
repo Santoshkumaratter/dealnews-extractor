@@ -487,7 +487,8 @@ docker-compose up
 ```
 
 ### **What's Fixed & Tested**
-- ✅ **Reactor Error**: Completely resolved (tested)
+- ✅ **Reactor Error**: Completely resolved (tested on Windows & Mac)
+- ✅ **Version Compatibility**: Fixed Python 3.9/3.12 and Scrapy version issues
 - ✅ **MySQL Timing**: Healthcheck prevents connection issues
 - ✅ **Container Conflicts**: Proper cleanup instructions
 - ✅ **Port Conflicts**: Clear troubleshooting guide

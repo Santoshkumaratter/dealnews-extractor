@@ -1,4 +1,5 @@
-scrapy==2.13.3
-mysql-connector-python
-python-dotenv
-requests
+scrapy==2.11.0
+twisted==22.10.0
+mysql-connector-python==8.0.33
+python-dotenv==1.0.0
+requests==2.31.0

@@ -22,12 +22,15 @@ import scrapy.utils.reactor
 try:
     # Try the most compatible reactor for Docker environments
     scrapy.utils.reactor.install_reactor('twisted.internet.asyncioreactor.AsyncioSelectorReactor')
-except Exception:
+    print("✅ Using AsyncioSelectorReactor")
+except Exception as e:
     try:
         # Fallback to select reactor
         scrapy.utils.reactor.install_reactor('twisted.internet.selectreactor.SelectReactor')
-    except Exception:
+        print("✅ Using SelectReactor")
+    except Exception as e2:
         # Final fallback - let scrapy choose
+        print("✅ Using default reactor")
         pass
 
 # Now import and run scrapy

@@ -360,15 +360,21 @@ docker-compose down
 docker stop dealnews_mysql dealnews_adminer dealnews_scraper
 docker rm dealnews_mysql dealnews_adminer dealnews_scraper
 
-# 2. Start fresh
+# 2. Remove old scraper image to force rebuild
+docker rmi dealnews-sep26_scraper
+
+# 3. Rebuild with latest code
+docker-compose build --no-cache scraper
+
+# 4. Start fresh
 docker-compose up
 
-# 3. If network issues occur
+# 5. If network issues occur
 docker pull mysql:8.0 --platform linux/amd64
 docker pull adminer:4.8.1 --platform linux/amd64
 docker-compose up --build
 
-# 4. Check logs if needed
+# 6. Check logs if needed
 docker-compose logs scraper
 docker-compose logs mysql
 ```

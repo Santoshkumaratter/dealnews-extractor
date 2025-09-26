@@ -19,8 +19,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Set the reactor before importing scrapy
 import scrapy.utils.reactor
-# Use the most compatible reactor for Docker environments
-scrapy.utils.reactor.install_reactor('twisted.internet.asyncioreactor.AsyncioSelectorReactor')
+try:
+    # Try the most compatible reactor for Docker environments
+    scrapy.utils.reactor.install_reactor('twisted.internet.asyncioreactor.AsyncioSelectorReactor')
+except Exception:
+    try:
+        # Fallback to select reactor
+        scrapy.utils.reactor.install_reactor('twisted.internet.selectreactor.SelectReactor')
+    except Exception:
+        # Final fallback - let scrapy choose
+        pass
 
 # Now import and run scrapy
 from scrapy.crawler import CrawlerProcess

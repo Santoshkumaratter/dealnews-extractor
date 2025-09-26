@@ -121,7 +121,7 @@ def test_mysql_connection():
         import mysql.connector
         
         mysql_host = os.getenv('MYSQL_HOST', 'localhost')
-        mysql_port = int(os.getenv('MYSQL_PORT', '3307'))
+        mysql_port = int(os.getenv('MYSQL_PORT', '3306'))
         mysql_user = os.getenv('MYSQL_USER', 'root')
         mysql_password = os.getenv('MYSQL_PASSWORD', 'root')
         mysql_database = os.getenv('MYSQL_DATABASE', 'dealnews')

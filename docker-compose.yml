@@ -1,35 +1,9 @@
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: dealnews_mysql
-    env_file:
-      - .env
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-    ports:
-      - "3307:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./mysql_schema.sql:/docker-entrypoint-initdb.d/schema.sql
-    command: --default-authentication-plugin=mysql_native_password
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
-      timeout: 20s
-      retries: 10
-      interval: 10s
-      start_period: 30s
-
   adminer:
     image: adminer:4.8.1
     container_name: dealnews_adminer
     ports:
       - "8080:8080"
-    depends_on:
-      - mysql
     restart: unless-stopped
 
   scraper:
@@ -38,14 +12,14 @@ services:
     env_file:
       - .env
     environment:
-      - MYSQL_HOST=mysql
+      - MYSQL_HOST=laradock-mysql-1
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=root
+      - MYSQL_DATABASE=dealnews
     volumes:
       - ./exports:/app/exports
     depends_on:
-      mysql:
-        condition: service_healthy
+      - adminer
     command: ["python", "run.py"]
     restart: "no"
-
-volumes:
-  mysql_data:

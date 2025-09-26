@@ -75,9 +75,15 @@ class ProxyMiddleware:
         proxy_pass = os.getenv("PROXY_PASS")
         proxy_auth_header: Optional[str] = None
 
+        # Debug proxy configuration
+        if not proxy_user or not proxy_pass:
+            spider.logger.warning("Proxy credentials not found - running without proxy")
+            return
+
         # Prefer explicit proxy pool if provided
         if self.proxy_pool:
             proxy = random.choice(self.proxy_pool)
+            spider.logger.debug(f"Using proxy from pool: {proxy}")
         else:
             # Webshare rotating gateway
             proxy_host = os.getenv("PROXY_HOST", "p.webshare.io")

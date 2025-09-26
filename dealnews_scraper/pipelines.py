@@ -13,10 +13,12 @@ class MySQLPipeline:
             disable_mysql = os.getenv('DISABLE_MYSQL', 'false').lower() in ('1', 'true', 'yes')
             if disable_mysql:
                 logging.info("MySQL pipeline disabled by DISABLE_MYSQL flag")
+                spider.logger.info("MySQL pipeline disabled by DISABLE_MYSQL flag")
                 self.mysql_enabled = False
                 return
             
             self.mysql_enabled = True
+            spider.logger.info("MySQL pipeline enabled - attempting connection...")
             self.save_html_snapshots = os.getenv('SAVE_HTML_SNAPSHOTS', 'false').lower() in ('1', 'true', 'yes')
             self.snapshots_dir = os.getenv('SNAPSHOTS_DIR', 'exports/html_snapshots')
             if self.save_html_snapshots and not os.path.isdir(self.snapshots_dir):
@@ -31,6 +33,7 @@ class MySQLPipeline:
             
             # Log the connection details for debugging
             logging.info(f"Connecting to MySQL: {mysql_host}:{mysql_port} as {mysql_user} to database {mysql_database}")
+            spider.logger.info(f"Connecting to MySQL: {mysql_host}:{mysql_port} as {mysql_user} to database {mysql_database}")
             
             try:
                 self.conn = mysql.connector.connect(
@@ -45,11 +48,14 @@ class MySQLPipeline:
                     autocommit=True
                 )
                 logging.info("MySQL connection successful")
+                spider.logger.info("MySQL connection successful")
             except mysql.connector.Error as err:
                 logging.error(f"MySQL connection error: {err}")
+                spider.logger.error(f"MySQL connection error: {err}")
                 # Try alternative connection without specifying port
                 try:
                     logging.info("Trying alternative connection without port specification...")
+                    spider.logger.info("Trying alternative connection without port specification...")
                     self.conn = mysql.connector.connect(
                         host=mysql_host,
                         user=mysql_user,
@@ -60,9 +66,13 @@ class MySQLPipeline:
                         autocommit=True
                     )
                     logging.info("Alternative MySQL connection successful")
+                    spider.logger.info("Alternative MySQL connection successful")
                 except mysql.connector.Error as err2:
                     logging.error(f"Alternative MySQL connection also failed: {err2}")
-                    raise
+                    spider.logger.error(f"Alternative MySQL connection also failed: {err2}")
+                    spider.logger.error("MySQL pipeline will be disabled - data will be saved to JSON only")
+                    self.mysql_enabled = False
+                    return
             
             self.cursor = self.conn.cursor()
             

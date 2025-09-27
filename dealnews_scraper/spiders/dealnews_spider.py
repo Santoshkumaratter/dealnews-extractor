@@ -41,13 +41,22 @@ class DealnewsSpider(scrapy.Spider):
                     category_item['category_title'] = category.get('title', '')
                     yield category_item
             
-            # Create related deal items if related deals found
+            # Process related deals - check if they exist in database
             if deal.get('related_deals'):
                 for related_url in deal['related_deals']:
+                    # Create related deal item for tracking
                     related_item = RelatedDealItem()
                     related_item['dealid'] = deal.get('dealid', '')
                     related_item['relatedurl'] = related_url
                     yield related_item
+                    
+                    # Request the related deal page to parse full deal data
+                    yield scrapy.Request(
+                        url=related_url,
+                        callback=self.parse_related_deal,
+                        meta={'original_dealid': deal.get('dealid', '')},
+                        dont_filter=True
+                    )
 
         # Handle pagination and infinite scroll
         self.handle_pagination(response)
@@ -371,3 +380,80 @@ class DealnewsSpider(scrapy.Spider):
         item['raw_html'] = raw_html[:10000] if raw_html else ''  # Limit HTML size
         
         return item
+
+    def parse_related_deal(self, response):
+        """Parse individual related deal pages and extract full deal data"""
+        self.logger.info(f"Parsing related deal: {response.url}")
+        
+        # Extract deal data from the related deal page
+        deals = self.extract_deals(response)
+        
+        for deal in deals:
+            # Only process if this is a new deal (not already in database)
+            if self.is_new_deal(deal.get('url', '')):
+                self.logger.info(f"New related deal found: {deal.get('url', '')}")
+                
+                # Create main deal item
+                yield self.create_item(deal, response.text)
+                
+                # Create image items if images found
+                if deal.get('images'):
+                    for image_url in deal['images']:
+                        image_item = DealImageItem()
+                        image_item['dealid'] = deal.get('dealid', '')
+                        image_item['imageurl'] = image_url
+                        yield image_item
+                
+                # Create category items if categories found
+                if deal.get('categories'):
+                    for category in deal['categories']:
+                        category_item = DealCategoryItem()
+                        category_item['dealid'] = deal.get('dealid', '')
+                        category_item['category_name'] = category.get('name', '')
+                        category_item['category_url'] = category.get('url', '')
+                        category_item['category_title'] = category.get('title', '')
+                        yield category_item
+            else:
+                self.logger.info(f"Related deal already exists: {deal.get('url', '')}")
+
+    def is_new_deal(self, deal_url):
+        """Check if deal URL already exists in database"""
+        if not deal_url:
+            return False
+            
+        try:
+            import mysql.connector
+            import os
+            from dotenv import load_dotenv
+            
+            # Load environment variables
+            load_dotenv()
+            
+            # Database connection parameters
+            config = {
+                'host': os.getenv('MYSQL_HOST', 'localhost'),
+                'port': int(os.getenv('MYSQL_PORT', 3306)),
+                'user': os.getenv('MYSQL_USER', 'root'),
+                'password': os.getenv('MYSQL_PASSWORD', 'root'),
+                'database': os.getenv('MYSQL_DATABASE', 'dealnews'),
+                'autocommit': True
+            }
+            
+            # Connect to database
+            connection = mysql.connector.connect(**config)
+            cursor = connection.cursor()
+            
+            # Check if URL exists
+            cursor.execute("SELECT COUNT(*) FROM deals WHERE url = %s", (deal_url,))
+            count = cursor.fetchone()[0]
+            
+            cursor.close()
+            connection.close()
+            
+            # Return True if new (count == 0), False if exists (count > 0)
+            return count == 0
+            
+        except Exception as e:
+            self.logger.warning(f"Database check failed for {deal_url}: {e}")
+            # If database check fails, assume it's new to be safe
+            return True

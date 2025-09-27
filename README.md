@@ -20,6 +20,8 @@ A complete, production-ready Scrapy-based web scraper for extracting deals, prom
 ## 🎯 **Key Features**
 
 - **✅ Real-time Deal Extraction** - Extracts live deals from DealNews.com
+- **✅ Related Deals Processing** - Automatically parses related deal pages and adds new deals
+- **✅ Smart Duplicate Prevention** - Checks database before adding related deals
 - **✅ Proxy Support** - Webshare.io integration with rotation and authentication
 - **✅ MySQL Storage** - Normalized database with proper relationships
 - **✅ Docker Ready** - Complete containerization for easy deployment
@@ -90,8 +92,22 @@ docker-compose up
 - ✅ **All Records Saved**: Every deal is saved to database
 - ✅ **Complete Data**: All columns populated correctly
 - ✅ **No Duplicates**: Unique URL constraint prevents duplicates
+- ✅ **Related Deals Processing**: Automatically parses and adds related deals
+- ✅ **Smart Duplicate Prevention**: Checks database before adding related deals
 - ✅ **Proper Indexing**: Fast queries on dealid, category, store, price
 - ✅ **Timestamps**: Automatic created_at and updated_at tracking
+
+## 🔗 **Related Deals Feature**
+
+The scraper now automatically processes related deals:
+
+1. **Finds Related Deals**: Extracts related deal URLs from each deal page
+2. **Checks Database**: Verifies if the related deal already exists
+3. **Parses New Deals**: If not found, parses the related deal page
+4. **Saves Complete Data**: Adds all deal columns for new related deals
+5. **Prevents Duplicates**: Only adds deals that don't already exist
+
+**This means you get much more comprehensive data coverage!** 🎯
 
 ### **Manual Local Installation**
 

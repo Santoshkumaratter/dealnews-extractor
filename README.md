@@ -8,12 +8,12 @@ A complete, production-ready Scrapy-based web scraper for extracting deals, prom
 1. **Copy environment file**: `cp .env-template .env`
 2. **Setup database**: Run `setup_laradock.bat` (Windows) or `./setup_laradock.sh` (Mac/Linux)
 3. **Run scraper**: `docker-compose up scraper`
-4. **Check your data**: Go to http://localhost:8081 (your existing phpMyAdmin)
+4. **Check your data**: Go to http://localhost:8081 (Adminer) or your existing phpMyAdmin
 
 ### **If you don't have Laradock:**
 1. **Copy environment file**: `cp env.example .env`
 2. **Run everything**: `docker-compose up`
-3. **Check your data**: Go to http://localhost:8080 (Adminer)
+3. **Check your data**: Go to http://localhost:8081 (Adminer)
 
 **That's it! No Docker knowledge needed.** 🚀
 
@@ -78,7 +78,7 @@ docker-compose up
 - **✅ All data accessible by your other applications**
 
 ### **For Standalone Docker:**
-- **Database**: http://localhost:8080 (Adminer)
+- **Database**: http://localhost:8081 (Adminer)
 - **JSON Export**: `exports/deals.json` (6.4MB+ of deal data)
 - **CSV Export**: `exports/deals.csv`
 
@@ -238,7 +238,7 @@ docker-compose up -d
 docker-compose logs -f scraper
 
 # Access database via Adminer
-# Open http://localhost:8080
+# Open http://localhost:8081
 # Server: mysql, Username: dealnews_user, Database: dealnews
 
 # Stop services
@@ -400,8 +400,8 @@ dealnews-main/
 
 5. **Port Conflicts**
    ```bash
-   # If port 8080 is in use, change in docker-compose.yml
-   # Or stop the service using port 8080
+   # If port 8081 is in use, change in docker-compose.yml
+   # Or stop the service using port 8081
    ```
 
 ### **Step-by-Step Docker Commands**
@@ -550,7 +550,7 @@ docker-compose up
 - ✅ **JSON Export**: Complete deal data exported
 
 ### **Access Your Data**
-- **Database**: http://localhost:8080 (Adminer)
+- **Database**: http://localhost:8081 (Adminer)
 - **JSON Export**: `exports/deals.json` (6.4MB+ of deal data)
 - **CSV Export**: `exports/deals.csv`
 

@@ -258,9 +258,21 @@ class MySQLPipeline:
             logging.warning(f"Failed to save HTML snapshot: {e}")
 
     def process_deal_item(self, item, spider):
-        """Process main deal item"""
-        self.cursor.execute("SELECT id FROM deals WHERE url=%s", (item.get('url', ''),))
-        if not self.cursor.fetchone():
+        """Process main deal item with deduplication"""
+        deal_url = item.get('url', '')
+        deal_title = item.get('title', 'Unknown')[:50]
+        
+        # Check if deal already exists by URL (deduplication)
+        self.cursor.execute("SELECT id, title FROM deals WHERE url=%s", (deal_url,))
+        existing_deal = self.cursor.fetchone()
+        
+        if existing_deal:
+            spider.logger.info(f"🔄 DUPLICATE SKIPPED: Deal already exists (ID: {existing_deal[0]}) - {deal_title}")
+            logging.info(f"Deal already exists, skipping: {deal_url}")
+            return
+        
+        # Insert new deal
+        try:
             self.cursor.execute("""
                 INSERT INTO deals (
                     dealid, recid, url, title, price, promo, category, store,
@@ -288,9 +300,14 @@ class MySQLPipeline:
                 item.get('raw_html', '')
             ))
             self.conn.commit()
-            logging.info(f"Inserted deal: {item.get('title', 'Unknown')[:50]}...")
-        else:
-            logging.info(f"Deal already exists, skipping: {item.get('url', '')}")
+            spider.logger.info(f"✅ NEW DEAL SAVED: {deal_title}")
+            logging.info(f"Inserted deal: {deal_title}")
+        except mysql.connector.Error as err:
+            if err.errno == 1062:  # Duplicate entry error (race condition)
+                spider.logger.info(f"🔄 DUPLICATE SKIPPED: Deal was inserted by another process - {deal_title}")
+                logging.info(f"Deal was inserted by another process, skipping: {deal_url}")
+            else:
+                raise
 
     def process_image_item(self, item, spider):
         """Process deal image item"""

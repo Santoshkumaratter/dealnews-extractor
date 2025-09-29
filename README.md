@@ -6,7 +6,7 @@ A complete, production-ready Scrapy-based web scraper for extracting deals, prom
 
 ### **If you have Laradock running:**
 1. **Copy environment file**: `cp .env-template .env`
-2. **Setup database**: Run `setup_laradock.bat` (Windows) or `./setup_laradock.sh` (Mac/Linux)
+2. **Setup database**: Run `./setup_laradock.sh` (Mac/Linux) or `setup_laradock.bat` (Windows)
 3. **Run scraper**: `docker-compose up scraper`
 4. **Check your data**: Go to http://localhost:8081 (Adminer) or your existing phpMyAdmin
 
@@ -37,10 +37,10 @@ A complete, production-ready Scrapy-based web scraper for extracting deals, prom
 # Step 1: Setup environment
 cp .env-template .env
 
-# Step 2: Setup database (Windows)
-setup_laradock.bat
-# OR (Mac/Linux)
+# Step 2: Setup database (Mac/Linux)
 ./setup_laradock.sh
+# OR (Windows)
+setup_laradock.bat
 
 # Step 3: Run scraper
 docker-compose up scraper
@@ -402,6 +402,19 @@ dealnews-main/
    ```bash
    # If port 8081 is in use, change in docker-compose.yml
    # Or stop the service using port 8081
+   ```
+
+6. **Mac-Specific Issues**
+   ```bash
+   # If you get permission errors on Mac
+   chmod +x setup_laradock.sh
+   ./setup_laradock.sh
+   
+   # If Docker Desktop is not running
+   # Start Docker Desktop from Applications
+   
+   # If you get "command not found" errors
+   # Make sure Docker Desktop is running and terminal is restarted
    ```
 
 ### **Step-by-Step Docker Commands**

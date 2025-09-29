@@ -9,17 +9,16 @@ services:
   scraper:
     build: .
     container_name: dealnews_scraper
+    network_mode: "host"
     env_file:
       - .env
     environment:
-      - MYSQL_HOST=laradock-mysql-1
+      - MYSQL_HOST=localhost
       - MYSQL_PORT=3306
       - MYSQL_USER=root
       - MYSQL_PASSWORD=root
       - MYSQL_DATABASE=dealnews
     volumes:
       - ./exports:/app/exports
-    depends_on:
-      - adminer
     command: ["python", "run.py"]
     restart: "no"

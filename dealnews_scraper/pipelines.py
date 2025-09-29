@@ -26,7 +26,7 @@ class MySQLPipeline:
 
             # Get MySQL connection settings from environment or use defaults
             mysql_host = os.getenv('MYSQL_HOST', 'localhost')
-            mysql_port = int(os.getenv('MYSQL_PORT', '3307'))  # Use port 3307 as default
+            mysql_port = int(os.getenv('MYSQL_PORT', '3306'))  # Use port 3306 as default
             mysql_user = os.getenv('MYSQL_USER', 'root')  # Use root user by default
             mysql_password = os.getenv('MYSQL_PASSWORD', 'root')  # Use root password by default
             mysql_database = os.getenv('MYSQL_DATABASE', 'dealnews')
@@ -218,7 +218,7 @@ class MySQLPipeline:
             
             # Get MySQL connection settings from environment
             mysql_host = os.getenv('MYSQL_HOST', 'localhost')
-            mysql_port = int(os.getenv('MYSQL_PORT', '3307'))
+            mysql_port = int(os.getenv('MYSQL_PORT', '3306'))
             mysql_user = os.getenv('MYSQL_USER', 'root')
             mysql_password = os.getenv('MYSQL_PASSWORD', 'root')
             mysql_database = os.getenv('MYSQL_DATABASE', 'dealnews')

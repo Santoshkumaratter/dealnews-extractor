@@ -10,7 +10,15 @@ class DealnewsSpider(scrapy.Spider):
     allowed_domains = ["dealnews.com"]
     start_urls = [
         "https://www.dealnews.com/",
-        "https://www.dealnews.com/online-stores/"
+        "https://www.dealnews.com/online-stores/",
+        "https://www.dealnews.com/c/electronics/",
+        "https://www.dealnews.com/c/clothing/",
+        "https://www.dealnews.com/c/home-garden/",
+        "https://www.dealnews.com/c/computers/",
+        "https://www.dealnews.com/c/health-beauty/",
+        "https://www.dealnews.com/c/sports-outdoors/",
+        "https://www.dealnews.com/c/automotive/",
+        "https://www.dealnews.com/c/books-movies-music/"
     ]
 
     def parse(self, response):
@@ -92,24 +100,56 @@ class DealnewsSpider(scrapy.Spider):
         
         # Also look for traditional pagination links
         pagination_links = response.css('.pagination a::attr(href), .pager a::attr(href)').getall()
-        for link in pagination_links[:2]:  # Limit to 2 pages to avoid infinite loops
+        for link in pagination_links[:10]:  # Increased to 10 pages for more deals
             if link and 'page=' in link:
                 yield response.follow(link, self.parse)
+        
+        # Look for "Load More" or infinite scroll endpoints
+        load_more_data = response.css('button[data-url]::attr(data-url)').getall()
+        for data_url in load_more_data[:5]:  # Limit to 5 load more requests
+            if data_url:
+                yield response.follow(data_url, self.parse)
 
     def extract_deals(self, response):
         deals = []
         
-        # Use the correct DealNews selector based on actual HTML structure
-        deal_elements = response.css('.content-card')
+        # Use multiple selectors to catch all possible deal elements
+        deal_selectors = [
+            '.content-card',
+            '.deal-card', 
+            '.offer-card',
+            '.product-card',
+            '.deal-item',
+            '.offer-item',
+            '.product-item',
+            '[data-content-id]',  # Any element with content ID
+            '.card',  # Generic card selector
+            '.item'   # Generic item selector
+        ]
         
-        if deal_elements:
-            self.logger.info(f"Found {len(deal_elements)} content cards")
-            
-            # Process each element
-            for element in deal_elements:
-                deal = self.extract_deal_from_element(element, response)
-                if deal and self.is_valid_deal(deal):
-                    deals.append(deal)
+        all_elements = []
+        for selector in deal_selectors:
+            elements = response.css(selector)
+            if elements:
+                self.logger.info(f"Found {len(elements)} elements with selector: {selector}")
+                all_elements.extend(elements)
+        
+        # Remove duplicates while preserving order
+        seen_elements = set()
+        unique_elements = []
+        for element in all_elements:
+            element_id = element.css('::attr(data-content-id)').get() or element.css('::attr(id)').get() or str(element)
+            if element_id not in seen_elements:
+                seen_elements.add(element_id)
+                unique_elements.append(element)
+        
+        self.logger.info(f"Found {len(unique_elements)} unique deal elements")
+        
+        # Process each element
+        for element in unique_elements:
+            deal = self.extract_deal_from_element(element, response)
+            if deal and self.is_valid_deal(deal):
+                deals.append(deal)
         
         self.logger.info(f"Total deals extracted: {len(deals)}")
         return deals
@@ -282,8 +322,29 @@ class DealnewsSpider(scrapy.Spider):
                 })
         deal['categories'] = categories
         
-        # Extract related deals - not available in current structure
-        deal['related_deals'] = []
+        # Extract related deals from "You might also like" or similar sections
+        related_deals = []
+        
+        # Look for related deals in various possible selectors
+        related_selectors = [
+            '.related-deals a::attr(href)',
+            '.similar-deals a::attr(href)', 
+            '.you-might-like a::attr(href)',
+            '.recommended a::attr(href)',
+            '.more-deals a::attr(href)',
+            '.deal-suggestions a::attr(href)',
+            '.content-card a::attr(href)'  # Fallback to any links in content cards
+        ]
+        
+        for selector in related_selectors:
+            related_links = element.css(selector).getall()
+            for link in related_links[:3]:  # Limit to 3 related deals per deal
+                if link and not link.startswith('#') and len(link) > 10:
+                    full_url = urljoin(response.url, link)
+                    if full_url not in related_deals:  # Avoid duplicates
+                        related_deals.append(full_url)
+        
+        deal['related_deals'] = related_deals
         
         # Set defaults for missing fields
         deal.setdefault('dealid', '')

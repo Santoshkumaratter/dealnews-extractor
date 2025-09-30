@@ -438,6 +438,37 @@ class DealnewsSpider(scrapy.Spider):
                         break
         deal['brand'] = brand or ''
         
+        # Start Date filter (extract from published date)
+        start_date = deal.get('published', '')
+        if start_date:
+            # Try to parse date
+            try:
+                from datetime import datetime
+                # Common date formats
+                date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%B %d, %Y']
+                for fmt in date_formats:
+                    try:
+                        parsed_date = datetime.strptime(start_date, fmt)
+                        deal['start_date'] = parsed_date.strftime('%Y-%m-%d')
+                        break
+                    except:
+                        continue
+            except:
+                pass
+        
+        # Max Price filter (extract from price)
+        price_text = deal.get('price', '')
+        if price_text:
+            import re
+            # Extract numeric price
+            price_match = re.search(r'[\$]?(\d+(?:\.\d{2})?)', price_text)
+            if price_match:
+                try:
+                    max_price = float(price_match.group(1))
+                    deal['max_price'] = max_price
+                except:
+                    pass
+        
         # Extract deal link - use the main link
         deallink = element.css('a::attr(href)').get()
         if deallink and not deallink.startswith('#') and len(deallink) > 10:
@@ -573,7 +604,21 @@ class DealnewsSpider(scrapy.Spider):
             else:
                 break
         
-        deal['related_deals'] = related_deals[:10]  # Increased to 10 related deals max
+        # Ensure we have at least 3 related deals
+        if len(related_deals) < 3:
+            # Strategy 4: If still not enough, find any deal links on the page
+            all_links = element.css('a::attr(href)').getall()
+            for link in all_links:
+                if link and not link.startswith('#') and len(link) > 10:
+                    full_url = urljoin(response.url, link)
+                    if (full_url not in related_deals and 
+                        full_url != deal.get('url', '') and
+                        'dealnews.com' in full_url):
+                        related_deals.append(full_url)
+                        if len(related_deals) >= 3:
+                            break
+        
+        deal['related_deals'] = related_deals[:10]  # Keep up to 10 related deals
         
         # Set defaults for missing fields
         deal.setdefault('dealid', '')

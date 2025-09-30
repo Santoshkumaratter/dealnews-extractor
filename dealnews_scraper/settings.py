@@ -40,7 +40,7 @@ RETRY_HTTP_CODES = [500, 503, 504, 400, 403, 404, 408, 429]
 RETRY_PRIORITY_ADJUST = -1
 
 ITEM_PIPELINES = {
-    'dealnews_scraper.pipelines.MySQLPipeline': 300,
+    'dealnews_scraper.normalized_pipeline.NormalizedMySQLPipeline': 300,
 }
 
 FEED_EXPORT_ENCODING = 'utf-8'

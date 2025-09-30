@@ -42,6 +42,9 @@ class DealnewsItem(scrapy.Item):
     offer_status = scrapy.Field() # Active, Expired, Limited
     include_expired = scrapy.Field() # Yes/No
     brand = scrapy.Field()       # Brand name
+    start_date = scrapy.Field()  # Start date filter
+    max_price = scrapy.Field()   # Max price filter
+    popularity_rank = scrapy.Field() # Popularity rank filter
 
 class DealImageItem(scrapy.Item):
     dealid = scrapy.Field()

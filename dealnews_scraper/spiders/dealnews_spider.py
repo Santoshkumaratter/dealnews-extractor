@@ -11,14 +11,32 @@ class DealnewsSpider(scrapy.Spider):
     start_urls = [
         "https://www.dealnews.com/",
         "https://www.dealnews.com/online-stores/",
-        "https://www.dealnews.com/c/electronics/",
-        "https://www.dealnews.com/c/clothing/",
-        "https://www.dealnews.com/c/home-garden/",
-        "https://www.dealnews.com/c/computers/",
-        "https://www.dealnews.com/c/health-beauty/",
-        "https://www.dealnews.com/c/sports-outdoors/",
-        "https://www.dealnews.com/c/automotive/",
-        "https://www.dealnews.com/c/books-movies-music/"
+        "https://www.dealnews.com/cat/Electronics/",
+        "https://www.dealnews.com/cat/Computers/",
+        "https://www.dealnews.com/cat/Home-Garden/",
+        "https://www.dealnews.com/cat/Clothing/",
+        "https://www.dealnews.com/cat/Health-Beauty/",
+        "https://www.dealnews.com/cat/Sports-Outdoors/",
+        "https://www.dealnews.com/cat/Toys-Games/",
+        "https://www.dealnews.com/cat/Automotive/",
+        "https://www.dealnews.com/cat/Books-Movies-Music/",
+        "https://www.dealnews.com/cat/Office-Supplies/",
+        "https://www.dealnews.com/cat/Travel/",
+        "https://www.dealnews.com/cat/Electronics/Computers/",
+        "https://www.dealnews.com/cat/Electronics/Phones/",
+        "https://www.dealnews.com/cat/Electronics/TVs/",
+        "https://www.dealnews.com/cat/Computers/Laptops/",
+        "https://www.dealnews.com/cat/Computers/Desktops/",
+        "https://www.dealnews.com/cat/Home-Garden/Kitchen/",
+        "https://www.dealnews.com/cat/Clothing/Mens/",
+        "https://www.dealnews.com/cat/Clothing/Womens/",
+        "https://www.dealnews.com/cat/Health-Beauty/Personal-Care/",
+        "https://www.dealnews.com/cat/Sports-Outdoors/Fitness/",
+        "https://www.dealnews.com/cat/Toys-Games/Video-Games/",
+        "https://www.dealnews.com/cat/Automotive/Auto-Parts/",
+        "https://www.dealnews.com/cat/Books-Movies-Music/Books/",
+        "https://www.dealnews.com/cat/Office-Supplies/Office-Furniture/",
+        "https://www.dealnews.com/cat/Travel/Hotels/",
     ]
 
     def parse(self, response):
@@ -65,7 +83,8 @@ class DealnewsSpider(scrapy.Spider):
                             url=related_url,
                             callback=self.parse_related_deal,
                             meta={'original_dealid': deal.get('dealid', '')},
-                            dont_filter=True
+                            dont_filter=True,
+                            priority=100  # Lower priority for related deals
                         )
             else:
                 self.logger.warning(f"No related deals found for: {deal.get('title', '')[:50]}")
@@ -102,15 +121,15 @@ class DealnewsSpider(scrapy.Spider):
                     yield response.follow(data_url, self.parse)
                     break
         
-        # Also look for traditional pagination links
+        # Also look for traditional pagination links (limit to 2 pages for speed)
         pagination_links = response.css('.pagination a::attr(href), .pager a::attr(href)').getall()
-        for link in pagination_links[:10]:  # Increased to 10 pages for more deals
+        for link in pagination_links[:10]:  # Increased to 10 pages for more data
             if link and 'page=' in link:
                 yield response.follow(link, self.parse)
         
-        # Look for "Load More" or infinite scroll endpoints
+        # Look for "Load More" or infinite scroll endpoints (limit to 2 for speed)
         load_more_data = response.css('button[data-url]::attr(data-url)').getall()
-        for data_url in load_more_data[:5]:  # Limit to 5 load more requests
+        for data_url in load_more_data[:10]:  # Increased to 10 load more requests for more data
             if data_url:
                 yield response.follow(data_url, self.parse)
 
@@ -175,8 +194,10 @@ class DealnewsSpider(scrapy.Spider):
         # Extract URL from data attributes or links
         url = element.css('::attr(data-offer-url)').get()
         if not url:
-            # Fallback to link href
-            url = element.css('a::attr(href)').get()
+            # Fallback to link href - look for the main deal link
+            url = element.css('a[href*="dealnews.com"]::attr(href)').get()
+            if not url:
+                url = element.css('a::attr(href)').get()
         
         if url and not url.startswith('#') and len(url) > 10:
             deal['url'] = urljoin(response.url, url)
@@ -188,27 +209,59 @@ class DealnewsSpider(scrapy.Spider):
             deal['url'] = ''
             deal['recid'] = ''
         
-        # Extract title using correct DealNews selector
-        title = element.css('.title::text').get()
-        if title and len(title.strip()) > 5:
-            deal['title'] = title.strip()
-        else:
+        # Extract title using multiple DealNews selectors
+        title_selectors = [
+            '.title::text',
+            '.deal-title::text', 
+            '.offer-title::text',
+            'h3::text',
+            'h4::text',
+            '.card-title::text',
+            '[data-testid="deal-title"]::text'
+        ]
+        
+        title = ''
+        for selector in title_selectors:
+            title = element.css(selector).get()
+            if title and len(title.strip()) > 5:
+                break
+        
+        if not title:
             # Fallback to title attribute
             title = element.css('.title::attr(title)').get()
             if title and len(title.strip()) > 5:
-                deal['title'] = title.strip()
+                title = title.strip()
             else:
-                deal['title'] = ''
+                title = ''
         
-        # Extract price - look for $ signs in text content
-        all_text = element.css('::text').getall()
-        for text in all_text:
-            text = text.strip()
-            if '$' in text and any(char.isdigit() for char in text) and len(text) < 20:
-                deal['price'] = text
+        deal['title'] = title.strip() if title else ''
+        
+        # Extract price using multiple selectors
+        price_selectors = [
+            '.price::text',
+            '.deal-price::text',
+            '.offer-price::text',
+            '.current-price::text',
+            '.sale-price::text',
+            '[data-testid="price"]::text'
+        ]
+        
+        price = ''
+        for selector in price_selectors:
+            price = element.css(selector).get()
+            if price and '$' in price and any(char.isdigit() for char in price):
                 break
-        else:
-            deal['price'] = ''
+        
+        if not price:
+            # Fallback: look for $ signs in text content
+            all_text = element.css('::text').getall()
+            for text in all_text:
+                text = text.strip()
+                if '$' in text and any(char.isdigit() for char in text) and len(text) < 20:
+                    price = text
+                    break
+        
+        deal['price'] = price.strip() if price else ''
         
         # Extract promo/coupon code - look for percentage or discount text
         all_text = element.css('::text').getall()
@@ -220,15 +273,30 @@ class DealnewsSpider(scrapy.Spider):
         else:
             deal['promo'] = ''
         
-        # Extract store from published date text (e.g., "Amazon · 16 hrs ago")
-        all_text = element.css('::text').getall()
+        # Extract store using multiple selectors
+        store_selectors = [
+            '.store::text',
+            '.merchant::text',
+            '.retailer::text',
+            '.brand::text',
+            '[data-testid="store"]::text'
+        ]
+        
         store = ''
-        for text in all_text:
-            text = text.strip()
-            if '·' in text and ('hrs ago' in text or 'days ago' in text or 'mins ago' in text):
-                # Extract store name before the "·" symbol
-                store = text.split('·')[0].strip()
+        for selector in store_selectors:
+            store = element.css(selector).get()
+            if store and len(store.strip()) > 1:
                 break
+        
+        if not store:
+            # Fallback: Extract store from published date text (e.g., "Amazon · 16 hrs ago")
+            all_text = element.css('::text').getall()
+            for text in all_text:
+                text = text.strip()
+                if '·' in text and ('hrs ago' in text or 'days ago' in text or 'mins ago' in text):
+                    # Extract store name before the "·" symbol
+                    store = text.split('·')[0].strip()
+                    break
         
         # Fallback to data-store attribute if no store found in text
         if not store:
@@ -263,6 +331,112 @@ class DealnewsSpider(scrapy.Spider):
         # Extract deal plus (additional info) - use callout text
         dealplus = element.css('.callout::text').get()
         deal['dealplus'] = dealplus.strip() if dealplus else ''
+        
+        # Extract additional filter variables from the image requirements
+        
+        # Staff Pick filter
+        staff_pick = element.css('[data-staff-pick="true"]').get()
+        if not staff_pick:
+            staff_pick = element.css('.staff-pick').get()
+        if not staff_pick:
+            # Check text content for staff pick indicators
+            all_text = element.css('::text').getall()
+            for text in all_text:
+                if 'staff pick' in text.lower() or 'editor' in text.lower():
+                    staff_pick = 'Yes'
+                    break
+        deal['staffpick'] = 'Yes' if staff_pick else 'No'
+        
+        # Offer Type filter
+        offer_type = element.css('[data-offer-type]::attr(data-offer-type)').get()
+        if not offer_type:
+            # Look for offer type in text content only (not scripts)
+            all_text = element.css('::text').getall()
+            for text in all_text:
+                text_lower = text.lower().strip()
+                # Skip JavaScript and HTML content
+                if 'function(' in text or '<' in text or 'javascript' in text_lower:
+                    continue
+                if any(keyword in text_lower for keyword in ['free shipping', 'coupon', 'rebate', 'clearance', 'sale', 'deal']):
+                    offer_type = text.strip()
+                    break
+        deal['offer_type'] = offer_type or ''
+        
+        # Popularity Rank filter (already extracted as popularity)
+        # This is already captured in the popularity field
+        
+        # Collection filter
+        collection = element.css('[data-collection]::attr(data-collection)').get()
+        if not collection:
+            # Look for collection indicators in categories
+            if deal.get('categories'):
+                for cat in deal['categories']:
+                    if 'collection' in cat.get('name', '').lower():
+                        collection = cat.get('name', '')
+                        break
+        deal['collection'] = collection or ''
+        
+        # Condition filter
+        condition = element.css('[data-condition]::attr(data-condition)').get()
+        if not condition:
+            # Look for condition in text content only (not scripts)
+            all_text = element.css('::text').getall()
+            for text in all_text:
+                text_lower = text.lower().strip()
+                # Skip JavaScript and HTML content
+                if 'function(' in text or '<' in text or 'javascript' in text_lower:
+                    continue
+                if any(keyword in text_lower for keyword in ['new', 'used', 'refurbished', 'open box', 'like new']):
+                    condition = text.strip()
+                    break
+        deal['condition'] = condition or 'New'
+        
+        # Events filter
+        events = element.css('[data-events]::attr(data-events)').get()
+        if not events:
+            # Look for event indicators
+            all_text = element.css('::text').getall()
+            for text in all_text:
+                text_lower = text.lower().strip()
+                if any(keyword in text_lower for keyword in ['black friday', 'cyber monday', 'prime day', 'flash sale', 'limited time']):
+                    events = text.strip()
+                    break
+        deal['events'] = events or ''
+        
+        # Offer Status filter
+        offer_status = element.css('[data-offer-status]::attr(data-offer-status)').get()
+        if not offer_status:
+            # Determine status based on availability
+            all_text = element.css('::text').getall()
+            text_content = ' '.join(all_text).lower()
+            if 'expired' in text_content or 'ended' in text_content:
+                offer_status = 'Expired'
+            elif 'limited' in text_content or 'while supplies last' in text_content:
+                offer_status = 'Limited'
+            else:
+                offer_status = 'Active'
+        deal['offer_status'] = offer_status or 'Active'
+        
+        # Include Expired filter (boolean)
+        deal['include_expired'] = 'Yes' if deal.get('offer_status') == 'Expired' else 'No'
+        
+        # Brand filter (extract from title or category)
+        brand = element.css('[data-brand]::attr(data-brand)').get()
+        if not brand:
+            # Try to extract brand from title
+            title = deal.get('title', '')
+            if title:
+                # Common brand patterns
+                brand_patterns = [
+                    'Apple', 'Samsung', 'Nike', 'Adidas', 'Sony', 'Microsoft', 'Google', 
+                    'Amazon', 'Walmart', 'Target', 'Best Buy', 'HP', 'Dell', 'Lenovo',
+                    'Canon', 'Nikon', 'Bose', 'JBL', 'LG', 'Panasonic', 'Philips'
+                ]
+                for pattern in brand_patterns:
+                    if pattern.lower() in title.lower():
+                        brand = pattern
+                        break
+        deal['brand'] = brand or ''
         
         # Extract deal link - use the main link
         deallink = element.css('a::attr(href)').get()
@@ -354,7 +528,7 @@ class DealnewsSpider(scrapy.Spider):
         if len(related_deals) < 3:
             # Look for other deals in the same category or similar price range
             category_links = element.css('.chip a::attr(href)').getall()
-            for link in category_links[:5]:  # Get up to 5 category links
+            for link in category_links[:15]:  # Get up to 15 category links
                 if link and not link.startswith('#') and len(link) > 10:
                     full_url = urljoin(response.url, link)
                     if full_url not in related_deals and full_url != deal.get('url', ''):
@@ -364,7 +538,7 @@ class DealnewsSpider(scrapy.Spider):
         if len(related_deals) < 3:
             # Look for other deals from the same store
             store_links = element.css('a[href*="store"]::attr(href)').getall()
-            for link in store_links[:3]:
+            for link in store_links[:10]:
                 if link and not link.startswith('#') and len(link) > 10:
                     full_url = urljoin(response.url, link)
                     if full_url not in related_deals and full_url != deal.get('url', ''):
@@ -375,12 +549,12 @@ class DealnewsSpider(scrapy.Spider):
             all_deal_links = element.css('a::attr(href)').getall()
             for link in all_deal_links:
                 if (link and not link.startswith('#') and len(link) > 10 and 
-                    'deal' in link.lower() and full_url not in related_deals and 
-                    full_url != deal.get('url', '')):
+                    'deal' in link.lower()):
                     full_url = urljoin(response.url, link)
-                    related_deals.append(full_url)
-                    if len(related_deals) >= 3:
-                        break
+                    if full_url not in related_deals and full_url != deal.get('url', ''):
+                        related_deals.append(full_url)
+                        if len(related_deals) >= 3:
+                            break
         
         # Ensure we have at least 3 related deals (pad with similar URLs if needed)
         while len(related_deals) < 3:
@@ -399,7 +573,7 @@ class DealnewsSpider(scrapy.Spider):
             else:
                 break
         
-        deal['related_deals'] = related_deals[:5]  # Limit to 5 related deals max
+        deal['related_deals'] = related_deals[:10]  # Increased to 10 related deals max
         
         # Set defaults for missing fields
         deal.setdefault('dealid', '')

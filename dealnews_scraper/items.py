@@ -33,6 +33,15 @@ class DealnewsItem(scrapy.Item):
     # Additional data
     detail = scrapy.Field()  # Full deal description
     raw_html = scrapy.Field()
+    
+    # Filter variables from the image requirements
+    offer_type = scrapy.Field()  # Free shipping, coupon, rebate, etc.
+    collection = scrapy.Field()  # Collection name
+    condition = scrapy.Field()   # New, used, refurbished, etc.
+    events = scrapy.Field()      # Black Friday, Cyber Monday, etc.
+    offer_status = scrapy.Field() # Active, Expired, Limited
+    include_expired = scrapy.Field() # Yes/No
+    brand = scrapy.Field()       # Brand name
 
 class DealImageItem(scrapy.Item):
     dealid = scrapy.Field()

@@ -22,15 +22,15 @@ import scrapy.utils.reactor
 try:
     # Try the most compatible reactor for Docker environments
     scrapy.utils.reactor.install_reactor('twisted.internet.asyncioreactor.AsyncioSelectorReactor')
-    print("✅ Using AsyncioSelectorReactor")
+    print("[OK] Using AsyncioSelectorReactor")
 except Exception as e:
     try:
         # Fallback to select reactor
         scrapy.utils.reactor.install_reactor('twisted.internet.selectreactor.SelectReactor')
-        print("✅ Using SelectReactor")
+        print("[OK] Using SelectReactor")
     except Exception as e2:
         # Final fallback - let scrapy choose
-        print("✅ Using default reactor")
+        print("[OK] Using default reactor")
         pass
 
 # Now import and run scrapy
@@ -40,12 +40,12 @@ from dealnews_scraper.spiders.dealnews_spider import DealnewsSpider
 
 def validate_environment():
     """Validate environment variables and dependencies"""
-    print("🔍 Validating environment and dependencies...")
+    print("Validating environment and dependencies...")
     
     # Check if .env file exists
     if not os.path.exists('.env'):
-        print("❌ ERROR: .env file not found!")
-        print("📋 Please copy env.example to .env and configure your credentials")
+        print("[ERROR] .env file not found!")
+        print("[INFO] Please copy env.example to .env and configure your credentials")
         print("   Command: cp env.example .env")
         return False
     
@@ -67,8 +67,8 @@ def validate_environment():
             missing_vars.append(var_name)
     
     if missing_vars:
-        print(f"❌ ERROR: Missing required environment variables: {', '.join(missing_vars)}")
-        print("📋 Please check your .env file and ensure all variables are set")
+        print(f"[ERROR] Missing required environment variables: {', '.join(missing_vars)}")
+        print("[INFO] Please check your .env file and ensure all variables are set")
         return False
     
     # Check proxy credentials if proxy is enabled
@@ -77,17 +77,17 @@ def validate_environment():
         proxy_user = os.getenv('PROXY_USER')
         proxy_pass = os.getenv('PROXY_PASS')
         if not proxy_user or not proxy_pass:
-            print("⚠️  WARNING: Proxy enabled but credentials not found")
-            print("📋 Either set PROXY_USER and PROXY_PASS in .env or set DISABLE_PROXY=true")
-            print("🔄 Continuing without proxy...")
+            print("[WARNING] Proxy enabled but credentials not found")
+            print("[INFO] Either set PROXY_USER and PROXY_PASS in .env or set DISABLE_PROXY=true")
+            print("Continuing without proxy...")
             os.environ['DISABLE_PROXY'] = 'true'
     
-    print("✅ Environment validation passed")
+    print("[SUCCESS] Environment validation passed")
     return True
 
 def check_dependencies():
     """Check if all required dependencies are available"""
-    print("📦 Checking dependencies...")
+    print("Checking dependencies...")
     
     required_modules = [
         ('scrapy', 'Scrapy framework'),
@@ -100,22 +100,22 @@ def check_dependencies():
     for module_name, description in required_modules:
         try:
             __import__(module_name)
-            print(f"✅ {description}: Available")
+            print(f"[OK] {description}: Available")
         except ImportError:
-            print(f"❌ {description}: Missing")
+            print(f"[ERROR] {description}: Missing")
             missing_deps.append(module_name)
     
     if missing_deps:
-        print(f"❌ ERROR: Missing dependencies: {', '.join(missing_deps)}")
-        print("📋 Please install requirements: pip install -r requirements.txt")
+        print(f"[ERROR] Missing dependencies: {', '.join(missing_deps)}")
+        print("[INFO] Please install requirements: pip install -r requirements.txt")
         return False
     
-    print("✅ All dependencies available")
+    print("[SUCCESS] All dependencies available")
     return True
 
 def test_mysql_connection():
     """Test MySQL connection before starting scraper"""
-    print("🗄️  Testing MySQL connection...")
+    print("Testing MySQL connection...")
     
     try:
         import mysql.connector
@@ -126,7 +126,7 @@ def test_mysql_connection():
         mysql_password = os.getenv('MYSQL_PASSWORD', 'root')
         mysql_database = os.getenv('MYSQL_DATABASE', 'dealnews')
         
-        print(f"🔗 Connecting to {mysql_host}:{mysql_port} as {mysql_user}...")
+        print(f"Connecting to {mysql_host}:{mysql_port} as {mysql_user}...")
         
         conn = mysql.connector.connect(
             host=mysql_host,
@@ -145,41 +145,41 @@ def test_mysql_connection():
         cursor.close()
         conn.close()
         
-        print("✅ MySQL connection successful")
+        print("[SUCCESS] MySQL connection successful")
         return True
         
     except mysql.connector.Error as e:
-        print(f"❌ MySQL connection failed: {e}")
-        print("📋 Please check your MySQL settings in .env file")
-        print("📋 Ensure MySQL server is running and accessible")
+        print(f"[ERROR] MySQL connection failed: {e}")
+        print("[INFO] Please check your MySQL settings in .env file")
+        print("[INFO] Ensure MySQL server is running and accessible")
         return False
     except Exception as e:
-        print(f"❌ Unexpected error testing MySQL: {e}")
+        print(f"[ERROR] Unexpected error testing MySQL: {e}")
         return False
 
 def main():
-    print("🚀 DealNews Scraper - Starting Environment Check")
+    print("DealNews Scraper - Starting Environment Check")
     print("=" * 50)
     
     # Step 1: Validate environment
     if not validate_environment():
-        print("\n❌ Environment validation failed. Exiting.")
+        print("\n[ERROR] Environment validation failed. Exiting.")
         sys.exit(1)
     
     # Step 2: Check dependencies
     if not check_dependencies():
-        print("\n❌ Dependency check failed. Exiting.")
+        print("\n[ERROR] Dependency check failed. Exiting.")
         sys.exit(1)
     
     # Step 3: Test MySQL connection
     mysql_enabled = os.getenv('DISABLE_MYSQL', '').lower() not in ('1', 'true', 'yes')
     if mysql_enabled:
         if not test_mysql_connection():
-            print("\n❌ MySQL connection test failed. Exiting.")
-            print("💡 Tip: Set DISABLE_MYSQL=true in .env to run without database")
+            print("\n[ERROR] MySQL connection test failed. Exiting.")
+            print("[TIP] Set DISABLE_MYSQL=true in .env to run without database")
             sys.exit(1)
     
-    print("\n✅ All checks passed! Starting scraper...")
+    print("\n[SUCCESS] All checks passed! Starting scraper...")
     print("=" * 50)
     
     # Set up minimal logging (only to file, not console)
@@ -276,17 +276,17 @@ def main():
     process = CrawlerProcess(settings)
     process.crawl(DealnewsSpider)
     
-    print("🚀 DealNews Scraper Starting...")
-    print("📊 Extracting deals from DealNews.com...")
-    print("💾 Saving data to MySQL database...")
-    print("📁 Exporting data to JSON file...")
+    print("DealNews Scraper Starting...")
+    print("Extracting deals from DealNews.com...")
+    print("Saving data to MySQL database...")
+    print("Exporting data to JSON file...")
     
     process.start()
     
-    print("✅ DealNews Scraper Completed Successfully!")
-    print("📈 Data extracted and saved to database")
-    print("📄 Check exports/deals.json for scraped data")
-    print("🗄️  Access database via Adminer at http://localhost:8080")
+    print("[SUCCESS] DealNews Scraper Completed Successfully!")
+    print("Data extracted and saved to database")
+    print("Check exports/deals.json for scraped data")
+    print("Access database via Adminer at http://localhost:8080")
 
 if __name__ == "__main__":
     main()
